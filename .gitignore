@@ -1,0 +1,46 @@
+# Project data and generated outputs
+data/
+artifacts/
+outputs/
+tmp/
+temp/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.Python
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+*.egg-info/
+dist/
+build/
+
+# Virtual environment and secrets
+.env
+.env.*
+*.local
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
