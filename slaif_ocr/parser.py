@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .pdf import PdfExtractionResult, extract_pdf_document
 from .schema import DocumentMetadata, InvoiceOutput, ReviewStatus, empty_invoice_fields
 
 
@@ -37,7 +38,8 @@ def parse_invoice(path: Path, root: Path | None = None, write_json: bool = True,
     if path.suffix.lower() != ".pdf":
         raise ValueError(f"Expected a PDF file, got: {path}")
 
-    output = empty_parse_output(path)
+    pdf_document = extract_pdf_document(path)
+    output = empty_parse_output(path, pdf_document)
     output_data = output.model_dump(mode="json")
 
     if write_json:
@@ -49,17 +51,23 @@ def parse_invoice(path: Path, root: Path | None = None, write_json: bool = True,
     return output_data
 
 
-def empty_parse_output(path: Path) -> InvoiceOutput:
+def empty_parse_output(path: Path, pdf_document: PdfExtractionResult | None = None) -> InvoiceOutput:
+    document = DocumentMetadata(page_count=0, text_native=False)
+    warnings: list[str] = []
+    if pdf_document is not None:
+        document = DocumentMetadata(page_count=pdf_document.page_count, text_native=pdf_document.text_native)
+        warnings.extend(pdf_document.warnings)
+
     return InvoiceOutput(
         parser_version=__version__,
         source_file=str(path),
         source_name=path.name,
         source_sha256=sha256_file(path),
         created_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        document=DocumentMetadata(page_count=0, text_native=False),
+        document=document,
         engines=[],
         fields=empty_invoice_fields(),
-        warnings=[],
+        warnings=warnings,
         review_status=ReviewStatus.needs_review,
     )
 
