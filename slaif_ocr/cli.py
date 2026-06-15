@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .parser import batch_parse, default_invoice_dir, default_json_dir, default_root, list_invoices, parse_invoice
 from .server import OcrBrowserServer
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(prog="slaif-ocr", description="SLAIF invoice OCR CLI")
     parser.add_argument("--root", type=Path, default=default_root(), help="Project root directory")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -30,31 +31,36 @@ def main() -> None:
     serve_parser.add_argument("--port", type=int, default=8080)
 
     args = parser.parse_args()
-    root = args.root.resolve()
+    root = args.root
 
     if args.command == "list":
-        invoice_dir = (args.invoice_dir or default_invoice_dir(root)).resolve()
+        invoice_dir = args.invoice_dir or default_invoice_dir(root)
         for pdf in list_invoices(invoice_dir):
             print(pdf)
-        return
+        return 0
 
     if args.command == "parse":
-        out_dir = (args.out_dir or default_json_dir(root)).resolve()
-        result = parse_invoice(args.pdf, root=root, write_json=True, out_dir=out_dir)
-        print(result["output_file"])
+        out_dir = args.out_dir or default_json_dir(root)
+        try:
+            result = parse_invoice(args.pdf, root=root, write_json=True, out_dir=out_dir)
+        except (FileNotFoundError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(f"Wrote {result['output_file']}")
         if args.stdout:
             print(json.dumps(result, ensure_ascii=False, indent=2))
-        return
+        return 0
 
     if args.command == "batch":
-        invoice_dir = (args.invoice_dir or default_invoice_dir(root)).resolve()
-        out_dir = (args.out_dir or default_json_dir(root)).resolve()
+        invoice_dir = args.invoice_dir or default_invoice_dir(root)
+        out_dir = args.out_dir or default_json_dir(root)
         results = batch_parse(invoice_dir, root=root, out_dir=out_dir)
         print(json.dumps({"count": len(results), "out_dir": str(out_dir)}, ensure_ascii=False, indent=2))
-        return
+        return 0
 
     if args.command == "serve":
         OcrBrowserServer(root=root, host=args.host, port=args.port).serve_forever()
-        return
+        return 0
 
-    raise SystemExit(f"Unsupported command: {args.command}")
+    print(f"Unsupported command: {args.command}", file=sys.stderr)
+    return 1
