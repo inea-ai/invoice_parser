@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .ocr.models import LocalOcrRun
+from .ocr.registry import run_configured_local_adapters
 from .pdf import PdfExtractionResult, extract_pdf_document
 from .schema import DocumentMetadata, InvoiceOutput, ReviewStatus, empty_invoice_fields
 
@@ -39,7 +41,8 @@ def parse_invoice(path: Path, root: Path | None = None, write_json: bool = True,
         raise ValueError(f"Expected a PDF file, got: {path}")
 
     pdf_document = extract_pdf_document(path)
-    output = empty_parse_output(path, pdf_document)
+    ocr_run = run_configured_local_adapters(path)
+    output = empty_parse_output(path, pdf_document, ocr_run)
     output_data = output.model_dump(mode="json")
 
     if write_json:
@@ -51,12 +54,20 @@ def parse_invoice(path: Path, root: Path | None = None, write_json: bool = True,
     return output_data
 
 
-def empty_parse_output(path: Path, pdf_document: PdfExtractionResult | None = None) -> InvoiceOutput:
+def empty_parse_output(
+    path: Path,
+    pdf_document: PdfExtractionResult | None = None,
+    ocr_run: LocalOcrRun | None = None,
+) -> InvoiceOutput:
     document = DocumentMetadata(page_count=0, text_native=False)
+    engines: list[dict[str, object]] = []
     warnings: list[str] = []
     if pdf_document is not None:
         document = DocumentMetadata(page_count=pdf_document.page_count, text_native=pdf_document.text_native)
         warnings.extend(pdf_document.warnings)
+    if ocr_run is not None:
+        engines = list(getattr(ocr_run, "engines", []))
+        warnings.extend(getattr(ocr_run, "warnings", []))
 
     return InvoiceOutput(
         parser_version=__version__,
@@ -65,7 +76,7 @@ def empty_parse_output(path: Path, pdf_document: PdfExtractionResult | None = No
         source_sha256=sha256_file(path),
         created_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         document=document,
-        engines=[],
+        engines=engines,
         fields=empty_invoice_fields(),
         warnings=warnings,
         review_status=ReviewStatus.needs_review,
