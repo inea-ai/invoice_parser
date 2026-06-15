@@ -7,14 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .extractors import extract_amounts, extract_dates, extract_external_document_no, extract_strm_code, extract_vat_id
-from .mappings import load_mapping_context
-from .schema import empty_invoice_fields, fields_to_dict
-from .text_extract import extract_text
+from .schema import DocumentMetadata, InvoiceOutput, ReviewStatus, empty_invoice_fields
 
 
 def default_root() -> Path:
-    return Path.cwd()
+    return Path(".")
 
 
 def default_invoice_dir(root: Path) -> Path:
@@ -33,7 +30,6 @@ def list_invoices(invoice_dir: Path) -> list[Path]:
 
 def parse_invoice(path: Path, root: Path | None = None, write_json: bool = True, out_dir: Path | None = None) -> dict[str, Any]:
     root = root or default_root()
-    path = path.resolve()
     out_dir = out_dir or default_json_dir(root)
 
     if not path.exists():
@@ -41,48 +37,31 @@ def parse_invoice(path: Path, root: Path | None = None, write_json: bool = True,
     if path.suffix.lower() != ".pdf":
         raise ValueError(f"Expected a PDF file, got: {path}")
 
-    mapping_context = load_mapping_context(root)
-    text_result = extract_text(path)
-    text = text_result.text
-
-    fields = empty_invoice_fields()
-    warnings = [*mapping_context.warnings, *text_result.warnings]
-
-    if text:
-        for field_name, value in extract_dates(text).items():
-            fields["invoice"][field_name] = value
-        for field_name, value in extract_amounts(text).items():
-            fields["amounts"][field_name] = value
-        fields["supplier"]["vat_id"] = extract_vat_id(text)
-        fields["invoice"]["external_document_no"] = extract_external_document_no(text)
-        fields["routing"]["strm_code"] = extract_strm_code(text, mapping_context.strm_accounts)
-    else:
-        warnings.append("No source text available; field extraction was not attempted.")
-
-    output = {
-        "schema_version": "0.1",
-        "parser_version": __version__,
-        "source_file": str(path),
-        "source_name": path.name,
-        "source_sha256": sha256_file(path),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "text_extraction": {
-            "source": text_result.source,
-            "text_length": len(text),
-            "text_excerpt": text[:1200] if text else "",
-        },
-        "fields": fields_to_dict(fields),
-        "warnings": warnings,
-        "review_status": "needs_review",
-    }
+    output = empty_parse_output(path)
+    output_data = output.model_dump(mode="json")
 
     if write_json:
         out_dir.mkdir(parents=True, exist_ok=True)
         output_path = out_dir / f"{path.stem}.json"
-        output_path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        output["output_file"] = str(output_path.resolve())
+        output_path.write_text(json.dumps(output_data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return {**output_data, "output_file": str(output_path)}
 
-    return output
+    return output_data
+
+
+def empty_parse_output(path: Path) -> InvoiceOutput:
+    return InvoiceOutput(
+        parser_version=__version__,
+        source_file=str(path),
+        source_name=path.name,
+        source_sha256=sha256_file(path),
+        created_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        document=DocumentMetadata(page_count=0, text_native=False),
+        engines=[],
+        fields=empty_invoice_fields(),
+        warnings=[],
+        review_status=ReviewStatus.needs_review,
+    )
 
 
 def batch_parse(invoice_dir: Path, root: Path | None = None, out_dir: Path | None = None) -> list[dict[str, Any]]:

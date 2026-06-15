@@ -21,6 +21,16 @@ def load_mapping_context(root: Path) -> MappingContext:
     strm_accounts: dict[str, str] = {}
     bc_metadata_mapping: dict[str, Any] = {}
 
+    if not mapping_dir.exists():
+        warnings.append(f"Missing mapping folder: {mapping_dir}")
+        return MappingContext(
+            root=root,
+            mapping_dir=mapping_dir,
+            strm_accounts=strm_accounts,
+            bc_metadata_mapping=bc_metadata_mapping,
+            warnings=warnings,
+        )
+
     strm_path = mapping_dir / "sm_lastni_konti_mapping.json"
     if strm_path.exists():
         try:
